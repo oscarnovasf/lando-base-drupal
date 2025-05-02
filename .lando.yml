@@ -1,0 +1,209 @@
+name: [NOMBRE_PROYECTO]
+recipe: drupal11
+
+config:
+  webroot: web
+  php: '8.3'
+  composer_version: 2-latest
+  drush: ^13
+  xdebug: debug
+  config:
+    php: ./.lando/php/php.ini
+
+env_file:
+  - ./.lando/env.lndo
+
+services:
+  # Configuración del contenedor principal.
+  appserver:
+    build:
+      - ./.lando/scripts/prepare_lando.sh
+    build_as_root:
+      - find ./.lando/scripts/ -type f -iname "*.sh" -exec chmod +x {} \;
+      - ./.lando/scripts/prepare_lando_root.sh
+    run_as_root:
+      - "a2enmod headers"
+      - "service apache2 reload"
+    scanner:
+      maxRedirects: 0
+      timeout: 4000
+      retry: 10
+    overrides:
+      environment:
+        # Ajustes del entorno.
+        PATH: "/usr/local/games:/usr/games:$PATH"
+        LANG: "C.UTF-8"
+        LC_ALL: "C.UTF-8"
+        # Soporte para debug con Drush y XDEBUG.
+        PHP_IDE_CONFIG: "serverName=appserver"
+        # PHPUnit.
+        SIMPLETEST_BASE_URL: "https://[NOMBRE_PROYECTO].lndo.site"
+        SIMPLETEST_DB: "mysql://u[NOMBRE_PROYECTO]:[PASSWORD]@database/[NOMBRE_PROYECTO]"
+        # Mailhog.
+        PHP_SENDMAIL_PATH: '/usr/sbin/sendmail -S mailhog:1025'
+        # Behat / Selenium2.
+        MINK_DRIVER_ARGS: '["chrome", null, "http://chromedriver:4444/wd/hub"]'
+        MINK_DRIVER_ARGS_WEBDRIVER: '["chrome", null, "http://chromedriver:4444/wd/hub"]'
+        MINK_DRIVER_CLASS: 'Drupal\FunctionalJavascriptTests\DrupalSelenium2Driver'
+        BEHAT_PARAMS: '{"extensions": {"Behat\\MinkExtension": {"base_url": "http://appserver/"}, "Drupal\\DrupalExtension": {"drush" : {"root": "/app/web"}}}}'
+
+  # Configuración de la base de datos.
+  database:
+    type: mariadb:10.11
+    portforward: 3307
+    creds:
+      user: u[NOMBRE_PROYECTO]
+      database: [NOMBRE_PROYECTO]
+      password: [PASSWORD]
+
+  # Pruebas Behat.
+  chromedriver:
+    type: compose
+    services:
+      image: robcherry/docker-chromedriver:latest
+      expose:
+        - "4444"
+      environment:
+        CHROMEDRIVER_WHITELISTED_IPS: ""
+        CHROMEDRIVER_URL_BASE: "/wd/hub"
+      security_opt:
+        - seccomp:unconfined
+      command: ["/usr/local/bin/supervisord", "-c", "/etc/supervisord.conf"]
+
+  # Captura de correos.
+  mailpit:
+    type: mailpit:1.22
+    mailFrom:
+      - appserver
+
+  # Gestión de la base de datos.
+  adminer:
+    type: compose
+    services:
+      image: dehy/adminer
+      command: '/bin/s6-svscan /etc/services.d'
+    portforward: true
+    depends_on:
+      - database
+
+  # Gestión de caché.
+  cache:
+    type: redis
+    portforward: 6380
+    persist: true
+
+proxy:
+  appserver:
+    - [NOMBRE_PROYECTO].lndo.site
+  mailpit:
+    - mail.[NOMBRE_PROYECTO].lndo.site
+  adminer:
+    - db.[NOMBRE_PROYECTO].lndo.site
+
+events:
+  post-start:
+    - fortune /usr/share/games/fortunes/es/varios.fortunes | cowsay -f stimpy
+
+tooling:
+
+  # ############################################################################
+  #  Zona de ajustes sobre Drush.
+  # ############################################################################
+
+  # lando druli
+  druli:
+    service: appserver
+    description: Ejecuta 'drush uli' con la URI del NOMBRE_PROYECTO.
+    cmd:
+      - appserver: drush uli --uri=https://[NOMBRE_PROYECTO].lndo.site
+
+  # lando cr
+  cr:
+    service: appserver
+    description: Ejecuta 'drush cr' con la URI del NOMBRE_PROYECTO.
+    cmd:
+      - appserver: drush cr
+      - cache: redis-cli flushall
+
+  # lando drush
+  drush:
+    service: appserver
+    description: Ejecuta cualquier comando de Drush.
+    cmd:
+      - appserver: drush
+
+  # ############################################################################
+  #  Zona de ajustes sobre Composer.
+  # ############################################################################
+
+  # lando audit
+  audit:
+    service: appserver
+    description: Buscar problemas en dependencias instaladas.
+    cmd:
+      - composer audit --locked
+
+  # lando composer
+  composer:
+    service: appserver
+    description: Ejecutar comandos de composer.
+    cmd:
+      - composer
+
+  # lando outdated
+  outdated:
+    service: appserver
+    description: Comprobar dependencias con versiones nuevas.
+    cmd:
+      - composer outdated --locked --strict
+
+  # ############################################################################
+  #  Zona de herramientas.
+  # ############################################################################
+
+  # lando analyse
+  analyse:
+    service: appserver
+    description: Ejecución de análisis de código (GrumPHP).
+    cmd:
+      - /app/vendor/bin/grumphp run
+
+  # lando behat
+  behat:
+    service: appserver
+    description: "Ejecución de pruebas funcionales con Behat."
+    cmd:
+      - /app/vendor/bin/behat
+
+  # lando lineas
+  lineas:
+    service: appserver
+    description: Contar líneas de módulos y temas custom.
+    cmd:
+      - echo && echo "Líneas de Módulos:" && echo && cloc /app/web/modules/custom
+      - echo && echo  "Líneas de Themes:" && echo && cloc /app/web/themes/custom
+      - echo && echo   "Líneas Globales:" && echo && cloc /app/web/modules/custom /app/web/themes/custom
+
+  # lando phpstan
+  phpstan:
+    service: appserver
+    description: Ejecución de análisis estático de código (PHPStan).
+    cmd:
+      - /app/vendor/bin/phpstan analyse
+
+  # lando phpunit
+  phpunit:
+    service: appserver
+    description: Ejecución PHPUnit pasando la suite que queremos ejecutar.
+    cmd: "php -d xdebug.remote_port=9003 /app/vendor/bin/phpunit -c /app/phpunit.xml --testsuite"
+
+  # lando rector
+  rector:
+    service: appserver
+    description: Ejecutar rector.
+    cmd:
+      - ./vendor/bin/rector process --config ./vendor/palantirnet/drupal-rector/rector.php
+
+  # ############################################################################
+  #  Zona de Scripts.
+  # ############################################################################
