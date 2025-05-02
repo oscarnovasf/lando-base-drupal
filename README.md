@@ -58,7 +58,7 @@ $databases['default']['default'] = [
   ...
 ];
 ```
-> [!INFO]
+> [!NOTE]
 > Se recomienda el uso del script [iniciar-proyecto](https://github.com/oscarnovasf/iniciar-proyecto).
 
 ---
