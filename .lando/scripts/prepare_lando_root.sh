@@ -97,15 +97,13 @@ function install_node() {
   echo -e " Instalando y activando ${YELLOW}Node.js ${NODE_MAJOR}.x${RESET}..."
   linea
 
-  apt-get update
-  apt-get install -y ca-certificates curl gnupg
+  apt-get update -y && apt-get install -y ca-certificates curl gnupg
 
   mkdir -p /etc/apt/keyrings
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list
 
-  apt-get update
-  apt-get install nodejs -y
+  apt-get update -y && apt-get install -y nodejs
 
   chown -R www-data /usr/lib/node_modules
   chown -R www-data /usr/bin
@@ -130,6 +128,24 @@ function install_sass() {
   npm install -g sass
 }
 
+# Instalación de LinkChecker.
+function install_linkchecker() {
+  echo " "
+  echo -e " Instalando ${YELLOW}LinkChecker${RESET}..."
+  linea
+
+  apt-get install -y \
+    python3-bs4 \
+    python3-dnspython \
+    python3-requests \
+    pipx
+
+  pipx ensurepath
+  pipx install --system-site-packages linkchecker
+
+  ln -s /root/.local/bin/linkchecker /usr/local/bin/linkchecker
+}
+
 # Instalación y activación de OCI8.
 # Ver: https://github.com/lando/docs/issues/33
 # Ver: https://pecl.php.net/package/oci8/3.2.0
@@ -151,8 +167,7 @@ function install_oci8_ubuntu() {
   echo /opt/oracle/instantclient_21_7 > /etc/ld.so.conf.d/oracle-instantclient.conf
   ldconfig -v
 
-  apt update
-  apt install libaio1
+  apt update -y && apt install -y libaio1
 
   # Modificar la versión de oci8 en caso de ser necesario (pecl install oci8-x.x.x).
   echo "instantclient,/opt/oracle/instantclient_21_7" | pecl install oci8-3.2.1
@@ -180,8 +195,7 @@ function install_oci8_mac() {
   echo /opt/oracle/instantclient_19_10 > /etc/ld.so.conf.d/oracle-instantclient.conf
   ldconfig -v
 
-  apt update
-  apt install libaio1
+  apt update -y && apt install -y libaio1
 
   # Modificar la versión de oci8 en caso de ser necesario (pecl install oci8-x.x.x).
   echo "instantclient,/opt/oracle/instantclient_19_10" | pecl install oci8-3.2.1
@@ -216,11 +230,12 @@ show_header
 install_jq
 install_pv
 install_cloc
+install_linkchecker
 
 # Herramientas de desarrollo
-install_node 20
-install_gulp
-install_sass
+# install_node 20
+# install_gulp
+# install_sass
 
 # Herramientas de conexión con BBDD.
 # install_oci8_ubuntu

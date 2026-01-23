@@ -39,7 +39,7 @@ services:
         # PHPUnit.
         SIMPLETEST_BASE_URL: "https://[NOMBRE_PROYECTO].lndo.site"
         SIMPLETEST_DB: "mysql://u[NOMBRE_PROYECTO]:[PASSWORD]@database/[NOMBRE_PROYECTO]"
-        # Mailhog.
+        # Mailpit.
         PHP_SENDMAIL_PATH: '/usr/sbin/sendmail -S mailhog:1025'
         # Behat / Selenium2.
         MINK_DRIVER_ARGS: '["chrome", null, "http://chromedriver:4444/wd/hub"]'
@@ -72,9 +72,11 @@ services:
 
   # Captura de correos.
   mailpit:
-    type: mailpit:1.22
+    type: mailpit:1.27
     mailFrom:
       - appserver
+    maxMessages: 500
+    port: 1025
 
   # Gestión de la base de datos.
   adminer:
@@ -115,14 +117,14 @@ tooling:
     service: appserver
     description: Ejecuta 'drush uli' con la URI del NOMBRE_PROYECTO.
     cmd:
-      - appserver: drush uli --uri=https://[NOMBRE_PROYECTO].lndo.site
+      - appserver: /app/vendor/bin/drush uli --uri=https://[NOMBRE_PROYECTO].lndo.site
 
   # lando cr
   cr:
     service: appserver
     description: Ejecuta 'drush cr' con la URI del NOMBRE_PROYECTO.
     cmd:
-      - appserver: drush cr
+      - appserver: /app/vendor/bin/drush cr
       - cache: redis-cli flushall
 
   # lando drush
@@ -130,7 +132,7 @@ tooling:
     service: appserver
     description: Ejecuta cualquier comando de Drush.
     cmd:
-      - appserver: drush
+      - appserver: /app/vendor/bin/drush
 
   # ############################################################################
   #  Zona de ajustes sobre Composer.
@@ -184,6 +186,14 @@ tooling:
       - echo && echo  "Líneas de Themes:" && echo && cloc /app/web/themes/custom
       - echo && echo   "Líneas Globales:" && echo && cloc /app/web/modules/custom /app/web/themes/custom
 
+  # lando linkchecker
+  linkchecker:
+    service: appserver
+    description: Revisar enlaces rotos en el sitio.
+    user: root
+    cmd:
+      - linkchecker --no-status --no-warnings --check-extern --timeout=10 --threads=30 --file-output=html/reporte-[NOMBRE_PROYECTO].html --ignore-url="^mailto:" --ignore-url=".*\.(css|js)$" --user-agent="Mozilla/5.0 (compatible; linkchecker)" https://[NOMBRE_PROYECTO].lndo.site
+
   # lando phpstan
   phpstan:
     service: appserver
@@ -202,7 +212,7 @@ tooling:
     service: appserver
     description: Ejecutar rector.
     cmd:
-      - ./vendor/bin/rector process --config ./vendor/palantirnet/drupal-rector/rector.php
+      - /app/vendor/bin/rector process --config ./vendor/palantirnet/drupal-rector/rector.php
 
   # ############################################################################
   #  Zona de Scripts.
